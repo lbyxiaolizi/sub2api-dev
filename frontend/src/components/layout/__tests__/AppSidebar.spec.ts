@@ -4,6 +4,7 @@ import { fileURLToPath } from 'node:url'
 
 import { describe, expect, it } from 'vitest'
 import zhCommon from '@/i18n/locales/zh/common'
+import zhAccountGroups from '@/i18n/locales/zh/admin/accountGroups'
 
 const componentPath = resolve(dirname(fileURLToPath(import.meta.url)), '../AppSidebar.vue')
 const componentSource = readFileSync(componentPath, 'utf8')
@@ -85,5 +86,12 @@ describe('AppSidebar subscription feature flag', () => {
     expect(componentSource).toMatch(/case 'recharge_only':\s*return t\('nav\.recharge'\)/)
     expect(componentSource).toMatch(/case 'subscription_only':\s*return t\('nav\.subscribe'\)/)
     expect(componentSource).toMatch(/path: '\/purchase'[^\n]*label: purchaseNavLabel\.value/)
+  })
+})
+
+describe('AppSidebar account groups navigation', () => {
+  it('exposes centralized account groups alongside the account manager', () => {
+    expect(componentSource).toMatch(/path: '\/admin\/account-groups'[^\n]*label: t\('admin\.accountGroups\.title'\)/)
+    expect(zhAccountGroups.accountGroups.title).toBe('账号组')
   })
 })

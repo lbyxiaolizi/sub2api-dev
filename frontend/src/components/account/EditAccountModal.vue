@@ -1,7 +1,7 @@
 <template>
   <BaseDialog
     :show="show"
-    :title="t('admin.accounts.editAccount')"
+    :title="isGroupMode ? t('admin.accountGroups.typedSettingsTitle', { name: accountConfigGroup?.name }) : t('admin.accounts.editAccount')"
     width="wide"
     @close="handleClose"
   >
@@ -11,7 +11,10 @@
       @submit.prevent="handleSubmit"
       class="space-y-5"
     >
-      <div>
+      <div v-if="isGroupMode" class="rounded-lg bg-blue-50 p-3 text-sm text-blue-700 dark:bg-blue-900/20 dark:text-blue-300" data-testid="account-group-settings-hint">
+        {{ t('admin.accountGroups.typedSettingsHint') }}
+      </div>
+      <div v-if="!isGroupMode">
         <label class="input-label">{{ t('common.name') }}</label>
         <input v-model="form.name" type="text" required class="input" data-tour="edit-account-form-name" />
       </div>
@@ -179,7 +182,7 @@
           :plan="editOpenCodeAccountMode"
         />
         <!-- Zhipu 团队版 Coding Plan：组织/项目 ID（可选，填写后用量查询走团队版端点） -->
-        <div v-if="account.platform === 'zhipu' && editAccountMode === 'coding'">
+        <div v-if="!isGroupMode && account.platform === 'zhipu' && editAccountMode === 'coding'">
           <div class="flex items-center">
             <label class="input-label">{{ t('admin.accounts.cnProviders.zhipuTeam.title') }}</label>
             <HelpTooltip trigger="click" width-class="w-80">
@@ -207,7 +210,7 @@
           </div>
           <p class="input-hint mt-2">{{ t('admin.accounts.cnProviders.zhipuTeam.hint') }}</p>
         </div>
-        <div>
+        <div v-if="!isGroupMode">
           <label class="input-label">{{ t('admin.accounts.apiKey') }}</label>
           <input
             v-model="editApiKey"
@@ -337,7 +340,7 @@
             <div class="mb-4 flex gap-2">
               <button
                 type="button"
-                @click="modelRestrictionMode = 'whitelist'"
+                @click="setModelRestrictionMode('whitelist')"
                 :class="[
                   'flex-1 rounded-lg px-4 py-2 text-sm font-medium transition-all',
                   modelRestrictionMode === 'whitelist'
@@ -362,7 +365,7 @@
               </button>
               <button
                 type="button"
-                @click="modelRestrictionMode = 'mapping'"
+                @click="setModelRestrictionMode('mapping')"
                 :class="[
                   'flex-1 rounded-lg px-4 py-2 text-sm font-medium transition-all',
                   modelRestrictionMode === 'mapping'
@@ -389,7 +392,7 @@
 
             <!-- Whitelist Mode -->
             <div v-if="modelRestrictionMode === 'whitelist'">
-              <ModelWhitelistSelector v-model="allowedModels" :platform="account?.platform || 'anthropic'" :account-id="account?.id" />
+              <ModelWhitelistSelector v-model="allowedModels" :platform="account?.platform || 'anthropic'" :account-id="isGroupMode ? undefined : account?.id" />
               <p class="text-xs text-gray-500 dark:text-gray-400">
                 {{ t('admin.accounts.selectedModels', { count: allowedModels.length }) }}
                 <span v-if="allowedModels.length === 0 && modelMappings.length === 0">{{
@@ -915,7 +918,7 @@
           <div class="mb-4 flex gap-2">
             <button
               type="button"
-              @click="modelRestrictionMode = 'whitelist'"
+              @click="setModelRestrictionMode('whitelist')"
               :class="[
                 'flex-1 rounded-lg px-4 py-2 text-sm font-medium transition-all',
                 modelRestrictionMode === 'whitelist'
@@ -927,7 +930,7 @@
             </button>
             <button
               type="button"
-              @click="modelRestrictionMode = 'mapping'"
+              @click="setModelRestrictionMode('mapping')"
               :class="[
                 'flex-1 rounded-lg px-4 py-2 text-sm font-medium transition-all',
                 modelRestrictionMode === 'mapping'
@@ -941,7 +944,7 @@
 
           <!-- Whitelist Mode -->
           <div v-if="modelRestrictionMode === 'whitelist'">
-            <ModelWhitelistSelector v-model="allowedModels" :platform="account?.platform || 'anthropic'" :account-id="account?.id" />
+            <ModelWhitelistSelector v-model="allowedModels" :platform="account?.platform || 'anthropic'" :account-id="isGroupMode ? undefined : account?.id" />
             <p class="text-xs text-gray-500 dark:text-gray-400">
               {{ t('admin.accounts.selectedModels', { count: allowedModels.length }) }}
               <span v-if="allowedModels.length === 0 && modelMappings.length === 0">{{
@@ -1056,7 +1059,7 @@
           />
           <p class="input-hint">{{ t('admin.accounts.upstream.baseUrlHint') }}</p>
         </div>
-        <div>
+        <div v-if="!isGroupMode">
           <label class="input-label">{{ t('admin.accounts.upstream.apiKey') }}</label>
           <input
             v-model="editApiKey"
@@ -1071,7 +1074,7 @@
       <!-- Vertex Service Account -->
       <div v-if="(account.platform === 'gemini' || account.platform === 'anthropic') && account.type === 'service_account'" class="space-y-4">
         <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
-          <div>
+          <div v-if="!isGroupMode">
             <label class="input-label">Project ID</label>
             <input
               v-model="editVertexProjectId"
@@ -1100,7 +1103,7 @@
           <div class="mb-4 flex gap-2">
             <button
               type="button"
-              @click="modelRestrictionMode = 'whitelist'"
+              @click="setModelRestrictionMode('whitelist')"
               :class="[
                 'flex-1 rounded-lg px-4 py-2 text-sm font-medium transition-all',
                 modelRestrictionMode === 'whitelist'
@@ -1125,7 +1128,7 @@
             </button>
             <button
               type="button"
-              @click="modelRestrictionMode = 'mapping'"
+              @click="setModelRestrictionMode('mapping')"
               :class="[
                 'flex-1 rounded-lg px-4 py-2 text-sm font-medium transition-all',
                 modelRestrictionMode === 'mapping'
@@ -1152,7 +1155,7 @@
 
           <!-- Whitelist Mode -->
           <div v-if="modelRestrictionMode === 'whitelist'">
-            <ModelWhitelistSelector v-model="allowedModels" :platform="account?.platform || 'anthropic'" :account-id="account?.id" />
+            <ModelWhitelistSelector v-model="allowedModels" :platform="account?.platform || 'anthropic'" :account-id="isGroupMode ? undefined : account?.id" />
             <p class="text-xs text-gray-500 dark:text-gray-400">
               {{ t('admin.accounts.selectedModels', { count: allowedModels.length }) }}
               <span v-if="allowedModels.length === 0 && modelMappings.length === 0">{{
@@ -1271,7 +1274,7 @@
       <!-- Bedrock fields (for bedrock type, both SigV4 and API Key modes) -->
       <div v-if="account.type === 'bedrock'" class="space-y-4">
         <!-- SigV4 fields -->
-        <template v-if="!isBedrockAPIKeyMode">
+        <template v-if="!isGroupMode && !isBedrockAPIKeyMode">
           <div>
             <label class="input-label">{{ t('admin.accounts.bedrockAccessKeyId') }}</label>
             <input
@@ -1304,7 +1307,7 @@
         </template>
 
         <!-- API Key field -->
-        <div v-if="isBedrockAPIKeyMode">
+        <div v-if="!isGroupMode && isBedrockAPIKeyMode">
           <label class="input-label">{{ t('admin.accounts.bedrockApiKeyInput') }}</label>
           <input
             v-model="editBedrockApiKeyValue"
@@ -1348,7 +1351,7 @@
           <div class="mb-4 flex gap-2">
             <button
               type="button"
-              @click="modelRestrictionMode = 'whitelist'"
+              @click="setModelRestrictionMode('whitelist')"
               :class="[
                 'flex-1 rounded-lg px-4 py-2 text-sm font-medium transition-all',
                 modelRestrictionMode === 'whitelist'
@@ -1360,7 +1363,7 @@
             </button>
             <button
               type="button"
-              @click="modelRestrictionMode = 'mapping'"
+              @click="setModelRestrictionMode('mapping')"
               :class="[
                 'flex-1 rounded-lg px-4 py-2 text-sm font-medium transition-all',
                 modelRestrictionMode === 'mapping'
@@ -1475,7 +1478,7 @@
       </div>
 
       <div
-        v-if="account.platform === 'antigravity' && account.type === 'oauth'"
+        v-if="!isGroupMode && account.platform === 'antigravity' && account.type === 'oauth'"
         class="border-t border-gray-200 pt-4 dark:border-dark-600"
       >
         <label class="input-label">{{ t('admin.accounts.antigravityProjectIdLabel') }}</label>
@@ -1500,7 +1503,7 @@
             <p class="text-xs text-purple-700 dark:text-purple-400">{{ t('admin.accounts.mapRequestModels') }}</p>
           </div>
 
-          <div class="mb-3 flex flex-wrap gap-2">
+          <div v-if="!isGroupMode" class="mb-3 flex flex-wrap gap-2">
             <button
               type="button"
               @click="syncAntigravityUpstreamModels"
@@ -1888,11 +1891,12 @@
                 {{ t('admin.accounts.upstreamBilling.syncRate') }}
               </p>
               <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                {{ t('admin.accounts.upstreamBilling.syncRateHint') }}
+                {{ t(isGroupMode ? 'admin.accountGroups.rateSyncManagedHint' : 'admin.accounts.upstreamBilling.syncRateHint') }}
               </p>
             </div>
             <Toggle
               :model-value="upstreamBillingRateSyncEnabled"
+              :disabled="isGroupMode"
               data-testid="upstream-billing-rate-sync"
               :aria-label="t('admin.accounts.upstreamBilling.syncRate')"
               @update:model-value="handleUpstreamBillingRateSyncChange"
@@ -2165,13 +2169,13 @@
       </div>
 
       <OllamaCloudUsageSettings
-        v-if="account?.ollama_cloud_usage?.eligible"
+        v-if="!isGroupMode && account?.ollama_cloud_usage?.eligible"
         :account="account"
         @updated="handleOllamaCloudUsageUpdated"
       />
 
       <section
-        v-if="account?.opencode_go_usage?.eligible"
+        v-if="!isGroupMode && account?.opencode_go_usage?.eligible"
         class="space-y-4 border-t border-gray-200 pt-4 dark:border-dark-600"
         data-testid="opencode-go-usage-settings"
       >
@@ -3242,7 +3246,12 @@
       </div>
 
       <!-- Group Selection - 仅标准模式显示 -->
+      <div v-if="isGroupMode" class="flex items-center justify-between gap-4 border-t border-gray-200 pt-4 dark:border-dark-600">
+        <label class="input-label mb-0">{{ t('admin.accountGroups.schedulable') }}</label>
+        <Toggle v-model="groupSchedulable" data-testid="account-group-schedulable" :aria-label="t('admin.accountGroups.schedulable')" />
+      </div>
       <GroupSelector
+        v-if="!isGroupMode"
         v-model="form.group_ids"
         :groups="selectableGroups"
         :platform="account?.platform"
@@ -3310,6 +3319,8 @@ import { useI18n } from 'vue-i18n'
 import { useAppStore } from '@/stores/app'
 
 import { adminAPI } from '@/api/admin'
+import type { AccountConfigGroup } from '@/api/admin/accountGroups'
+import { buildAccountGroupEditorConfig } from '@/components/account/accountGroupEditor'
 import { useQuotaNotifyState } from '@/composables/useQuotaNotifyState'
 import type {
   Account,
@@ -3407,12 +3418,15 @@ import {
 interface Props {
   show: boolean
   account: Account | null
+  accountConfigGroup?: AccountConfigGroup | null
   proxies: Proxy[]
   pools?: ProxyPool[]
   groups: AdminGroup[]
 }
 
 const props = defineProps<Props>()
+const isGroupMode = computed(() => !!props.accountConfigGroup)
+const groupSchedulable = ref(true)
 
 // 代理池选项：用于账号「代理」处选择代理池（绑定后由池服务分配池内健康代理）。
 const poolSelectOptions = computed(() =>
@@ -3436,6 +3450,7 @@ const onProxySelectChange = (value: number | null) => {
 const emit = defineEmits<{
   close: []
   updated: [account: Account]
+  'group-updated': [group: AccountConfigGroup]
 }>()
 
 const { t } = useI18n()
@@ -3500,6 +3515,7 @@ const applyOpenCodeGoState = (next: OpenCodeGoUsageState) => {
 }
 
 const loadOpenCodeGoUsage = async () => {
+  if (isGroupMode.value) return
   opencodeGoLoading.value = true
   try {
     applyOpenCodeGoState(await adminAPI.accounts.getOpenCodeGoUsage(props.account!.id))
@@ -3511,6 +3527,7 @@ const loadOpenCodeGoUsage = async () => {
 }
 
 const setOpenCodeGoAutoRefresh = async (enabled: boolean) => {
+  if (isGroupMode.value) return
   opencodeGoSaving.value = true
   try {
     applyOpenCodeGoState(await adminAPI.accounts.setOpenCodeGoUsageAutoRefresh(props.account!.id, enabled))
@@ -3522,6 +3539,7 @@ const setOpenCodeGoAutoRefresh = async (enabled: boolean) => {
 }
 
 const refreshOpenCodeGoUsage = async () => {
+  if (isGroupMode.value) return
   opencodeGoRefreshing.value = true
   try {
     applyOpenCodeGoState(await adminAPI.accounts.refreshOpenCodeGoUsage(props.account!.id))
@@ -3817,7 +3835,7 @@ const modeFromGrokMediaExtra = (extra: Record<string, unknown> | undefined): Gro
 }
 
 const loadGrokMediaEligibility = async (accountID: number): Promise<GrokMediaEligibilityState | null> => {
-  if (!isGrokOAuthAccount.value || typeof adminAPI.accounts.getGrokMediaEligibility !== 'function') {
+  if (isGroupMode.value || !isGrokOAuthAccount.value || typeof adminAPI.accounts.getGrokMediaEligibility !== 'function') {
     return null
   }
   const requestVersion = ++grokMediaEligibilityRequestVersion
@@ -4300,6 +4318,7 @@ const form = reactive({
 })
 
 const handleUpstreamBillingRateSyncChange = (enabled: boolean) => {
+  if (isGroupMode.value) return
   upstreamBillingRateSyncEnabled.value = enabled
   if (enabled) {
     upstreamBillingAutoProbeEnabled.value = true
@@ -4346,10 +4365,41 @@ const normalizePoolModeRetryCount = (value: number) => {
   return normalized
 }
 
+const setModelRestrictionMode = (mode: 'whitelist' | 'mapping') => {
+  if (isGroupMode.value) {
+    // A group's model_mapping is one shared setting. Show identity mappings in
+    // either view, rather than making them disappear from the mapping tab.
+    // Move (do not copy) them so deleting a row cannot leave a hidden whitelist
+    // entry that silently restores it on save.
+    if (mode === 'mapping') {
+      const mappedModels = new Set(modelMappings.value.map(mapping => mapping.from.trim()))
+      modelMappings.value = [
+        ...allowedModels.value
+          .filter(model => !mappedModels.has(model.trim()))
+          .map(model => ({ from: model, to: model })),
+        ...modelMappings.value
+      ]
+      allowedModels.value = []
+    } else {
+      const identities = modelMappings.value.filter(mapping =>
+        mapping.from.trim() && mapping.from === mapping.to && !mapping.from.includes('*')
+      )
+      allowedModels.value = [...new Set([...allowedModels.value, ...identities.map(mapping => mapping.from)])]
+      const identityRows = new Set(identities)
+      modelMappings.value = modelMappings.value.filter(mapping => !identityRows.has(mapping))
+    }
+  }
+  modelRestrictionMode.value = mode
+}
+
 const loadModelRestrictionFromMapping = (rawMapping?: Record<string, unknown>) => {
   const parsed = splitModelMappingObject(rawMapping)
   allowedModels.value = parsed.allowedModels
   modelMappings.value = parsed.modelMappings
+  if (isGroupMode.value) {
+    setModelRestrictionMode(parsed.allowedModels.length || parsed.modelMappings.length ? 'mapping' : 'whitelist')
+    return
+  }
   modelRestrictionMode.value =
     parsed.modelMappings.length > 0 && parsed.allowedModels.length === 0
       ? 'mapping'
@@ -4395,6 +4445,7 @@ const syncFormFromAccount = (newAccount: Account | null) => {
   mixedChannelWarningDetails.value = null
   mixedChannelWarningRawMessage.value = ''
   mixedChannelWarningAction.value = null
+  groupSchedulable.value = newAccount.schedulable
   form.name = newAccount.name
   form.notes = newAccount.notes || ''
   form.proxy_id = newAccount.proxy_id
@@ -4449,7 +4500,7 @@ const syncFormFromAccount = (newAccount: Account | null) => {
     typeof extra?.auto_reset_credit_7d_threshold === 'number' ? extra.auto_reset_credit_7d_threshold * 100 : 100
   upstreamBillingAutoProbeEnabled.value = extra?.upstream_billing_probe_enabled === true
   upstreamBillingRateSyncEnabled.value =
-    upstreamBillingAutoProbeEnabled.value && extra?.upstream_billing_rate_sync_enabled === true
+    !isGroupMode.value && upstreamBillingAutoProbeEnabled.value && extra?.upstream_billing_rate_sync_enabled === true
 
 
   // Load OpenAI passthrough toggle (OpenAI OAuth/SetupToken/API Key)
@@ -4640,7 +4691,7 @@ const syncFormFromAccount = (newAccount: Account | null) => {
   grokMediaEligibilityInitialMode.value = grokMediaEligibilityMode.value
   grokMediaEligibilityState.value = null
   grokMediaEligibilityError.value = ''
-  if (newAccount.platform === 'grok' && newAccount.type === 'oauth') {
+  if (!isGroupMode.value && newAccount.platform === 'grok' && newAccount.type === 'oauth') {
     void loadGrokMediaEligibility(newAccount.id)
   } else {
     grokMediaEligibilityRequestVersion++
@@ -4947,6 +4998,7 @@ const confirmAddErrorCode = () => {
 }
 
 const syncAntigravityUpstreamModels = async () => {
+  if (isGroupMode.value) return
   if (!props.account?.id || isSyncingAntigravityUpstream.value) return
 
   isSyncingAntigravityUpstream.value = true
@@ -5298,7 +5350,7 @@ function toPositiveNumber(value: unknown) {
   return Math.trunc(num)
 }
 
-const needsMixedChannelCheck = () => props.account?.platform === 'antigravity' || props.account?.platform === 'anthropic'
+const needsMixedChannelCheck = () => !isGroupMode.value && (props.account?.platform === 'antigravity' || props.account?.platform === 'anthropic')
 
 const buildMixedChannelDetails = (resp?: CheckMixedChannelResponse) => {
   const details = resp?.details
@@ -5427,6 +5479,17 @@ const persistGrokMediaEligibility = async (accountID: number, updatedAccount: Ac
 const submitUpdateAccount = async (accountID: number, updatePayload: Record<string, unknown>) => {
   submitting.value = true
   try {
+    if (props.accountConfigGroup) {
+      const config = buildAccountGroupEditorConfig(props.accountConfigGroup.config, {
+        ...updatePayload,
+        schedulable: groupSchedulable.value
+      })
+      const updatedGroup = await adminAPI.accountGroups.update(props.accountConfigGroup.id, { config })
+      appStore.showSuccess(t('admin.accountGroups.saved'))
+      emit('group-updated', updatedGroup)
+      handleClose()
+      return
+    }
     let updatedAccount = await adminAPI.accounts.update(accountID, withAntigravityConfirmFlag(updatePayload))
     updatedAccount = await persistGrokMediaEligibility(accountID, updatedAccount)
     appStore.showSuccess(t('admin.accounts.accountUpdated'))
@@ -5492,8 +5555,8 @@ const handleSubmit = async () => {
     updatePayload.disable_auto_temp_unschedulable = disableAutoTempUnschedulable.value
     if (props.account.type === 'apikey') {
       updatePayload.upstream_billing_probe_enabled = upstreamBillingAutoProbeEnabled.value
-      updatePayload.upstream_billing_rate_sync_enabled = upstreamBillingRateSyncEnabled.value
-      if (upstreamBillingRateSyncEnabled.value) {
+      if (!isGroupMode.value) updatePayload.upstream_billing_rate_sync_enabled = upstreamBillingRateSyncEnabled.value
+      if (!isGroupMode.value && upstreamBillingRateSyncEnabled.value) {
         delete updatePayload.rate_multiplier
       }
     }
@@ -5541,7 +5604,7 @@ const handleSubmit = async () => {
           applyOpenCodeGoProtocolRules(newCredentials, editOpenCodeGoProtocolRules.value, 'edit')
         }
         // 智谱团队版 Coding Plan：组织/项目 ID 写入凭据（非空才写，清空即移除回落个人版路径）
-        if (props.account.platform === 'zhipu') {
+        if (!isGroupMode.value && props.account.platform === 'zhipu') {
           const org = editZhipuOrganization.value.trim()
           const project = editZhipuProject.value.trim()
           if (org) {
@@ -5562,9 +5625,9 @@ const handleSubmit = async () => {
       // 两者都无才报错。
       const hasExistingApiKey =
         props.account.credentials_status?.has_api_key ?? Boolean(currentCredentials.api_key)
-      if (editApiKey.value.trim()) {
+      if (!isGroupMode.value && editApiKey.value.trim()) {
         newCredentials.api_key = editApiKey.value.trim()
-      } else if (!hasExistingApiKey) {
+      } else if (!isGroupMode.value && !hasExistingApiKey) {
         appStore.showError(t('admin.accounts.apiKeyIsRequired'))
         return
       }
@@ -5660,11 +5723,11 @@ const handleSubmit = async () => {
       const currentCredentials = (props.account.credentials as Record<string, unknown>) || {}
       const newCredentials: Record<string, unknown> = { ...currentCredentials }
 
-      if (!editVertexProjectId.value.trim()) {
+      if (!isGroupMode.value && !editVertexProjectId.value.trim()) {
         appStore.showError(t('admin.accounts.vertexSaJsonMissingProjectId'))
         return
       }
-      if (!editVertexClientEmail.value.trim()) {
+      if (!isGroupMode.value && !editVertexClientEmail.value.trim()) {
         appStore.showError(t('admin.accounts.vertexSaJsonMissingClientEmail'))
         return
       }
@@ -5681,14 +5744,16 @@ const handleSubmit = async () => {
             credentialsStatus.has_service_account_json || credentialsStatus.has_service_account
           )
         : Boolean(currentCredentials.service_account_json || currentCredentials.service_account)
-      if (!hasExistingServiceAccountJson) {
+      if (!isGroupMode.value && !hasExistingServiceAccountJson) {
         appStore.showError(t('admin.accounts.vertexSaJsonRequired'))
         return
       }
-      newCredentials.project_id = editVertexProjectId.value.trim()
-      newCredentials.client_email = editVertexClientEmail.value.trim()
+      if (!isGroupMode.value) {
+        newCredentials.project_id = editVertexProjectId.value.trim()
+        newCredentials.client_email = editVertexClientEmail.value.trim()
+        newCredentials.tier_id = 'vertex'
+      }
       newCredentials.location = editVertexLocation.value.trim()
-      newCredentials.tier_id = 'vertex'
 
       // Add model mapping if configured
       const modelMapping = buildModelRestrictionMapping()
@@ -5721,7 +5786,7 @@ const handleSubmit = async () => {
         if (editBedrockApiKeyValue.value.trim()) {
           newCredentials.api_key = editBedrockApiKeyValue.value.trim()
         }
-      } else {
+      } else if (!isGroupMode.value) {
         // SigV4 mode
         newCredentials.aws_access_key_id = editBedrockAccessKeyId.value.trim()
         if (editBedrockSecretAccessKey.value.trim()) {
@@ -5864,6 +5929,10 @@ const handleSubmit = async () => {
       // Persist both states so a disabled account remains opted out when the
       // backend applies the default-enabled policy to missing values.
       newExtra[GROK_CLIENT_TOOL_CACHE_EXTRA_KEY] = grokClientToolCacheEnabled.value
+      if (isGroupMode.value) {
+        if (grokMediaEligibilityMode.value === 'auto') delete newExtra.grok_media_eligible
+        else newExtra.grok_media_eligible = grokMediaEligibilityMode.value === 'enabled'
+      }
       updatePayload.extra = newExtra
     }
 
@@ -5882,7 +5951,7 @@ const handleSubmit = async () => {
       const currentCredentials = (updatePayload.credentials as Record<string, unknown>) ||
         ((props.account.credentials as Record<string, unknown>) || {})
       const newCredentials: Record<string, unknown> = { ...currentCredentials }
-      if (props.account.type === 'oauth') {
+      if (!isGroupMode.value && props.account.type === 'oauth') {
         applyAntigravityProjectID(newCredentials, antigravityProjectId.value, 'edit')
       }
 

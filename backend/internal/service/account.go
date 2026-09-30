@@ -23,6 +23,8 @@ import (
 )
 
 type Account struct {
+	AccountConfigGroupID    *int64
+	AccountConfigGroupName  string
 	ID                      int64
 	Name                    string
 	Notes                   *string
@@ -1574,14 +1576,25 @@ func (a *Account) IsAnthropicProtocol() bool {
 }
 
 // GetAnthropicProtocolBaseURL 返回 Anthropic 协议账号的上游 base_url
-// （上游路径为 {base}/v1/messages）。优先取凭证 base_url，缺失时按
+// （上游路径为 {base}/v1/messages）。优先取显式分协议地址，其次凭证 base_url，缺失时按
 // 供应商 × 接入模式返回默认端点。非 Anthropic 协议账号返回空串。
 func (a *Account) GetAnthropicProtocolBaseURL() string {
 	if a == nil || (!a.IsAnthropicProtocol() && !a.IsAdaptiveAPIProtocol()) {
 		return ""
 	}
+	if override := strings.TrimSpace(a.GetCredential(AccountConfigGroupBaseURLOverrideKey)); override != "" {
+		return strings.TrimSuffix(override, "/v1")
+	}
 	if a.IsAdaptiveAPIProtocol() {
 		return a.GetCNProtocolBaseURL(APIProtocolAnthropic)
+	}
+	// Explicit protocol addresses survive leaving an account group. In
+	// particular its materialized Anthropic base omits the Chat base's /v1,
+	// avoiding /v1/v1/messages after the group ownership marker is removed.
+	if baseURLs, ok := a.Credentials["api_base_urls"].(map[string]any); ok {
+		if baseURL, ok := baseURLs[APIProtocolAnthropic].(string); ok && strings.TrimSpace(baseURL) != "" {
+			return strings.TrimSpace(baseURL)
+		}
 	}
 	if a.Type == AccountTypeAPIKey || a.Type == AccountTypeUpstream {
 		if baseURL := strings.TrimSpace(a.GetCredential("base_url")); baseURL != "" {
@@ -1610,11 +1623,27 @@ func (a *Account) GetAnthropicProtocolBaseURL() string {
 // GetOpenAIFormatBaseURL 返回供 OpenAI 格式端点（/v1/models、/v1/chat/completions
 // 等）使用的 base。chat_completions / responses 协议下与 GetOpenAIBaseURL
 // 一致（凭证 base_url 或平台默认）；anthropic 协议下凭证 base_url 指向 Anthropic
-// 端点，不能拿来拼 OpenAI 路径，此时返回该供应商 × 模式的 Chat Completions
-// 默认 base（模型同步等协议族共用路径仍可用）。
+// 端点，不能拿来拼 OpenAI 路径，此时优先返回显式 Chat Completions 分协议地址，
+// 缺失时返回该供应商 × 模式默认 base（模型同步等协议族共用路径仍可用）。
 func (a *Account) GetOpenAIFormatBaseURL() string {
+	// A private endpoint's key must never be probed against a platform default,
+	// including accounts pinned to the Anthropic protocol.
+	if a != nil {
+		if override := strings.TrimSpace(a.GetCredential(AccountConfigGroupBaseURLOverrideKey)); override != "" {
+			return override
+		}
+	}
 	if a == nil || !a.IsAnthropicProtocol() {
 		return a.GetOpenAIBaseURL()
+	}
+	// Pinned Anthropic accounts can retain an explicit OpenAI-compatible
+	// endpoint after group detachment. Never send its key to a provider default
+	// when that endpoint is configured. The regular pinned editor clears this
+	// map when changing base_url, so later standalone edits are not shadowed.
+	if baseURLs, ok := a.Credentials["api_base_urls"].(map[string]any); ok {
+		if baseURL, ok := baseURLs[APIProtocolChatCompletions].(string); ok && strings.TrimSpace(baseURL) != "" {
+			return strings.TrimSpace(baseURL)
+		}
 	}
 	switch a.Platform {
 	case PlatformKimi:

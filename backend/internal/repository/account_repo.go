@@ -531,6 +531,21 @@ func (r *accountRepository) updateLockedAccount(
 		return nil, err
 	}
 	account.Extra = extra
+	group, assignedProxyID, err := lockedAccountConfigGroup(ctx, client, account.ID)
+	if err != nil {
+		return nil, err
+	}
+	if group != nil {
+		account.Credentials, err = restoreLockedAccountConfigGroupEndpoint(ctx, client, account.ID, group, account.Credentials)
+		if err != nil {
+			return nil, err
+		}
+		preserveAccountConfigGroup(account, group, assignedProxyID)
+		extra = account.Extra
+		explicitRateMultiplier = account.RateMultiplier
+	} else {
+		account.Credentials = stripAccountConfigGroupEndpointOverride(account.Credentials)
+	}
 
 	schedulable := account.Schedulable
 	if account.Status == service.StatusError {
@@ -851,10 +866,6 @@ func decodeAccountExtraJSON(raw []byte) (any, bool, error) {
 }
 
 func (r *accountRepository) UpdateCredentials(ctx context.Context, id int64, credentials map[string]any) error {
-	payload, err := json.Marshal(normalizeJSONMap(credentials))
-	if err != nil {
-		return err
-	}
 	baseCtx := ctx
 	contextTx := dbent.TxFromContext(ctx)
 	client := r.client
@@ -872,6 +883,23 @@ func (r *accountRepository) UpdateCredentials(ctx context.Context, id int64, cre
 			ctx = dbent.NewTxContext(ctx, tx)
 			client = tx.Client()
 		}
+	}
+	group, _, err := lockedAccountConfigGroup(ctx, client, id)
+	if err != nil {
+		return err
+	}
+	if group != nil {
+		credentials, err = restoreLockedAccountConfigGroupEndpoint(ctx, client, id, group, credentials)
+		if err != nil {
+			return err
+		}
+		credentials = service.MergeAccountConfigGroupSettings(credentials, group.Config.Credentials, true)
+	} else {
+		credentials = stripAccountConfigGroupEndpointOverride(credentials)
+	}
+	payload, err := json.Marshal(normalizeJSONMap(credentials))
+	if err != nil {
+		return err
 	}
 	result, err := client.ExecContext(ctx, `
 		UPDATE accounts
@@ -987,6 +1015,27 @@ func (r *accountRepository) Delete(ctx context.Context, id int64) error {
 		txClient = r.client
 	}
 
+	// Serialize deletion against configuration-group attachment before removing
+	// the membership whose deferred FK protects the routing binding.
+	rows, err := txClient.QueryContext(ctx, "SELECT id FROM accounts WHERE id = $1 FOR UPDATE", id)
+	if err != nil {
+		return err
+	}
+	for rows.Next() {
+		var lockedID int64
+		if err := rows.Scan(&lockedID); err != nil {
+			_ = rows.Close()
+			return err
+		}
+	}
+	err = rows.Err()
+	_ = rows.Close()
+	if err != nil {
+		return err
+	}
+	if _, err := txClient.ExecContext(ctx, "DELETE FROM account_config_group_members WHERE account_id = $1", id); err != nil {
+		return err
+	}
 	if _, err := txClient.AccountGroup.Delete().Where(dbaccountgroup.AccountIDEQ(id)).Exec(ctx); err != nil {
 		return err
 	}
@@ -1857,18 +1906,48 @@ func (r *accountRepository) syncSchedulerAccountSnapshots(ctx context.Context, a
 }
 
 func (r *accountRepository) ClearError(ctx context.Context, id int64) error {
-	_, err := r.client.Account.Update().
-		Where(dbaccount.IDEQ(id)).
-		SetStatus(service.StatusActive).
-		SetErrorMessage("").
-		Save(ctx)
+	baseCtx := ctx
+	contextTx := dbent.TxFromContext(ctx)
+	client := clientFromContext(ctx, r.client)
+	var tx *dbent.Tx
+	if contextTx == nil {
+		var err error
+		tx, err = client.Tx(ctx)
+		if err != nil && !errors.Is(err, dbent.ErrTxStarted) {
+			return err
+		}
+		if tx != nil {
+			defer func() { _ = tx.Rollback() }()
+			client = tx.Client()
+			ctx = dbent.NewTxContext(ctx, tx)
+		}
+	}
+	group, _, err := lockedAccountConfigGroup(ctx, client, id)
 	if err != nil {
 		return err
 	}
-	if err := enqueueSchedulerOutbox(ctx, r.sql, service.SchedulerOutboxEventAccountChanged, &id, nil, nil); err != nil {
-		logger.LegacyPrintf("repository.account", "[SchedulerOutbox] enqueue clear error failed: account=%d err=%v", id, err)
+	status := service.StatusActive
+	if group != nil && group.Config.Status != service.StatusActive {
+		status = group.Config.Status
 	}
-	r.syncSchedulerAccountSnapshot(ctx, id)
+	builder := client.Account.Update().Where(dbaccount.IDEQ(id)).SetStatus(status).SetErrorMessage("")
+	if group != nil && (!group.Config.Schedulable || group.Config.Status != service.StatusActive) {
+		builder.SetSchedulable(false)
+	}
+	if _, err := builder.Save(ctx); err != nil {
+		return err
+	}
+	if err := enqueueSchedulerOutbox(ctx, client, service.SchedulerOutboxEventAccountChanged, &id, nil, nil); err != nil {
+		return err
+	}
+	if tx != nil {
+		if err := tx.Commit(); err != nil {
+			return err
+		}
+	}
+	if contextTx == nil {
+		r.syncSchedulerAccountSnapshot(baseCtx, id)
+	}
 	return nil
 }
 
@@ -2686,18 +2765,44 @@ func (r *accountRepository) UpdateSessionWindowEnd(ctx context.Context, id int64
 }
 
 func (r *accountRepository) SetSchedulable(ctx context.Context, id int64, schedulable bool) error {
-	_, err := r.client.Account.Update().
-		Where(dbaccount.IDEQ(id)).
-		SetSchedulable(schedulable).
-		Save(ctx)
+	baseCtx := ctx
+	contextTx := dbent.TxFromContext(ctx)
+	client := clientFromContext(ctx, r.client)
+	var tx *dbent.Tx
+	if contextTx == nil {
+		var err error
+		tx, err = client.Tx(ctx)
+		if err != nil && !errors.Is(err, dbent.ErrTxStarted) {
+			return err
+		}
+		if tx != nil {
+			defer func() { _ = tx.Rollback() }()
+			client = tx.Client()
+			ctx = dbent.NewTxContext(ctx, tx)
+		}
+	}
+	group, _, err := lockedAccountConfigGroup(ctx, client, id)
 	if err != nil {
 		return err
 	}
-	if err := enqueueSchedulerOutbox(ctx, r.sql, service.SchedulerOutboxEventAccountChanged, &id, nil, nil); err != nil {
-		logger.LegacyPrintf("repository.account", "[SchedulerOutbox] enqueue schedulable change failed: account=%d err=%v", id, err)
+	// Runtime failures may disable a member of an enabled group. Recovery may
+	// only enable a member when the central configuration permits scheduling.
+	if group != nil && (!group.Config.Schedulable || group.Config.Status != service.StatusActive) {
+		schedulable = false
 	}
-	if !schedulable {
-		r.syncSchedulerAccountSnapshot(ctx, id)
+	if _, err := client.Account.Update().Where(dbaccount.IDEQ(id)).SetSchedulable(schedulable).Save(ctx); err != nil {
+		return err
+	}
+	if err := enqueueSchedulerOutbox(ctx, client, service.SchedulerOutboxEventAccountChanged, &id, nil, nil); err != nil {
+		return err
+	}
+	if tx != nil {
+		if err := tx.Commit(); err != nil {
+			return err
+		}
+	}
+	if !schedulable && contextTx == nil {
+		r.syncSchedulerAccountSnapshot(baseCtx, id)
 	}
 	return nil
 }
@@ -2756,7 +2861,8 @@ func (r *accountRepository) UpdateExtra(ctx context.Context, id int64, updates m
 	}
 
 	clearProbeSnapshot := upstreamBillingProbeExplicitlyDisabled(updates) || upstreamBillingProbeSnapshotClearRequested(updates)
-	durableSchedulerChange := shouldEnqueueSchedulerOutboxForExtraUpdates(updates) || clearProbeSnapshot
+	managedSettingsWrite := len(service.AccountConfigGroupExtraSettings(updates)) > 0
+	durableSchedulerChange := shouldEnqueueSchedulerOutboxForExtraUpdates(updates) || clearProbeSnapshot || managedSettingsWrite
 	baseCtx := ctx
 	contextTx := dbent.TxFromContext(ctx)
 	client := clientFromContext(ctx, r.client)
@@ -2771,6 +2877,11 @@ func (r *accountRepository) UpdateExtra(ctx context.Context, id int64, updates m
 			defer func() { _ = tx.Rollback() }()
 			ctx = dbent.NewTxContext(ctx, tx)
 			client = tx.Client()
+		}
+	}
+	if managedSettingsWrite {
+		if err := lockUngroupedAccountConfigWrites(ctx, client, []int64{id}); err != nil {
+			return err
 		}
 	}
 	extraExpression := "COALESCE(extra, '{}'::jsonb) || $1::jsonb"
@@ -3261,6 +3372,11 @@ func (r *accountRepository) BulkUpdate(ctx context.Context, ids []int64, updates
 		}
 	}
 
+	if isAccountConfigGroupBulkSettingsWrite(updates) {
+		if err := lockUngroupedAccountConfigWrites(ctx, exec, ids); err != nil {
+			return 0, err
+		}
+	}
 	result, err := exec.ExecContext(ctx, query, args...)
 	if err != nil {
 		return 0, err

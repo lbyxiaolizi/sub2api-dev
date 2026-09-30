@@ -79,6 +79,13 @@ func (s *adminServiceImpl) ListAccounts(ctx context.Context, page, pageSize int,
 		return nil, 0, err
 	}
 	s.enrichPoolNames(ctx, accounts)
+	accountPointers := make([]*Account, len(accounts))
+	for i := range accounts {
+		accountPointers[i] = &accounts[i]
+	}
+	if err := s.enrichAccountConfigGroupMemberships(ctx, accountPointers); err != nil {
+		return nil, 0, err
+	}
 	return accounts, result.Total, nil
 }
 
@@ -105,6 +112,9 @@ func (s *adminServiceImpl) GetAccount(ctx context.Context, id int64) (*Account, 
 		return nil, err
 	}
 	s.enrichPoolName(ctx, account)
+	if err := s.enrichAccountConfigGroupMemberships(ctx, []*Account{account}); err != nil {
+		return nil, err
+	}
 	return account, nil
 }
 
@@ -118,6 +128,9 @@ func (s *adminServiceImpl) GetAccountsByIDs(ctx context.Context, ids []int64) ([
 		return nil, fmt.Errorf("failed to get accounts by IDs: %w", err)
 	}
 
+	if err := s.enrichAccountConfigGroupMemberships(ctx, accounts); err != nil {
+		return nil, err
+	}
 	return accounts, nil
 }
 
@@ -674,6 +687,9 @@ func (s *adminServiceImpl) UpdateAccount(ctx context.Context, id int64, input *U
 	if err != nil {
 		return nil, err
 	}
+	if err := s.guardAccountConfigGroupUpdate(ctx, account, input); err != nil {
+		return nil, err
+	}
 	hadTempUnschedulableMark := account.TempUnschedulableUntil != nil && account.TempUnschedulableUntil.After(time.Now())
 
 	var normalizedExtra map[string]any
@@ -1063,6 +1079,12 @@ func (s *adminServiceImpl) UpdateAccount(ctx context.Context, id int64, input *U
 // UpdateAccountExtra 仅对 Extra JSONB 做 key 级合并，避免覆盖其它运行态键
 // （如 model_rate_limits / passive_usage_* 等）。
 func (s *adminServiceImpl) UpdateAccountExtra(ctx context.Context, id int64, updates map[string]any) error {
+	if len(AccountConfigGroupExtraSettings(updates)) > 0 {
+		if err := s.guardAccountConfigGroupIDs(ctx, []int64{id}); err != nil {
+			return err
+		}
+	}
+
 	updates = sanitizedCodexFingerprintExtraUpdates(updates)
 	updates = stripOpenAIAutoResetCreditManagedExtra(updates, true)
 	delete(updates, UpstreamBillingProbeEnabledExtraKey)
@@ -1111,6 +1133,9 @@ func (s *adminServiceImpl) BulkUpdateAccounts(ctx context.Context, input *BulkUp
 		input.AccountIDs = accountIDs
 	}
 
+	if err := s.guardAccountConfigGroupIDs(ctx, input.AccountIDs); err != nil {
+		return nil, err
+	}
 	result := &BulkUpdateAccountsResult{
 		SuccessIDs: make([]int64, 0, len(input.AccountIDs)),
 		FailedIDs:  make([]int64, 0, len(input.AccountIDs)),
@@ -1472,8 +1497,18 @@ func (s *adminServiceImpl) SetAccountError(ctx context.Context, id int64, errorM
 }
 
 func (s *adminServiceImpl) SetAccountSchedulable(ctx context.Context, id int64, schedulable bool) (*Account, error) {
-	if err := s.accountRepo.SetSchedulable(ctx, id, schedulable); err != nil {
+	if err := s.guardAccountConfigGroupIDs(ctx, []int64{id}); err != nil {
 		return nil, err
+	}
+	// Unlike runtime recovery, this is a manual configuration change. The bulk
+	// writer locks and rechecks membership atomically, closing the attach race
+	// between the user-facing guard above and the actual write.
+	count, err := s.accountRepo.BulkUpdate(ctx, []int64{id}, AccountBulkUpdate{Schedulable: &schedulable})
+	if err != nil {
+		return nil, err
+	}
+	if count == 0 {
+		return nil, ErrAccountNotFound
 	}
 	updated, err := s.accountRepo.GetByID(ctx, id)
 	if err != nil {
@@ -1483,6 +1518,10 @@ func (s *adminServiceImpl) SetAccountSchedulable(ctx context.Context, id int64, 
 }
 
 func (s *adminServiceImpl) RevertAccountProxyFallback(ctx context.Context, id int64) error {
+	if err := s.guardAccountConfigGroupIDs(ctx, []int64{id}); err != nil {
+		return err
+	}
+
 	if err := s.accountRepo.RevertProxyFallback(ctx, id); err != nil {
 		return err
 	}

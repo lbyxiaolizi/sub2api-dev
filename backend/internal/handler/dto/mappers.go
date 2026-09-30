@@ -261,6 +261,8 @@ func AccountFromServiceShallow(a *service.Account) *Account {
 		openCodeGoUsage = state
 	}
 	out := &Account{
+		AccountConfigGroupID:         a.AccountConfigGroupID,
+		AccountConfigGroupName:       a.AccountConfigGroupName,
 		ID:                           a.ID,
 		Name:                         a.Name,
 		Notes:                        a.Notes,
@@ -487,7 +489,9 @@ func AccountListItemFromAccount(a *Account) *AccountListItem {
 		return nil
 	}
 	return &AccountListItem{
-		ID: a.ID, Name: a.Name, Notes: a.Notes, Platform: a.Platform, Type: a.Type,
+		AccountConfigGroupID:   a.AccountConfigGroupID,
+		AccountConfigGroupName: a.AccountConfigGroupName,
+		ID:                     a.ID, Name: a.Name, Notes: a.Notes, Platform: a.Platform, Type: a.Type,
 		Credentials: a.Credentials, CredentialsStatus: a.CredentialsStatus, Extra: a.Extra,
 		OllamaCloudUsage: a.OllamaCloudUsage, OpenCodeGoUsage: a.OpenCodeGoUsage,
 		ProxyID: a.ProxyID, ProxyFallbackOriginID: a.ProxyFallbackOriginID, ProxyFallbackOriginName: a.ProxyFallbackOriginName,
