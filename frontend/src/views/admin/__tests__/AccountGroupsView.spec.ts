@@ -1,6 +1,7 @@
+import Select from '@/components/common/Select.vue'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { defineComponent, h, reactive } from 'vue'
-import { flushPromises, mount } from '@vue/test-utils'
+import { flushPromises, mount, type VueWrapper } from '@vue/test-utils'
 import AccountGroupsView from '../AccountGroupsView.vue'
 
 const mocks = vi.hoisted(() => ({
@@ -66,6 +67,12 @@ beforeEach(() => {
   mocks.update.mockResolvedValue(fixture)
   mocks.createAccount.mockResolvedValue({ id: 11, name: 'Shared group #11', account_config_group_id: 10 })
 })
+
+async function selectGroupOption(wrapper: VueWrapper, id: string, value: number) {
+  const select = wrapper.findAllComponents(Select).find(component => component.props('id') === id)!
+  select.vm.$emit('update:modelValue', value)
+  await flushPromises()
+}
 
 describe('AccountGroupsView', () => {
   const apiKeyGroup = {
@@ -263,10 +270,10 @@ describe('AccountGroupsView', () => {
     await flushPromises()
     await wrapper.get('[data-testid="create-account-group"]').trigger('click')
     await wrapper.get('#account-group-name').setValue('New group')
-    const select = wrapper.get('#account-group-parent')
+    const select = wrapper.findAllComponents(Select).find(component => component.props('id') === 'account-group-parent')!
     // Composite routing groups may also own compatible account groups.
-    expect(select.findAll('option')).toHaveLength(3)
-    await select.setValue('5')
+    expect(select.props('options')).toHaveLength(3)
+    await selectGroupOption(wrapper, 'account-group-parent', 5)
     await flushPromises()
     expect(mocks.accounts).toHaveBeenCalledWith(1, 100, { group: '5', lite: '1' })
     expect(wrapper.get('[data-testid="member-1"]').attributes('disabled')).toBeDefined()
@@ -286,7 +293,7 @@ describe('AccountGroupsView', () => {
     const wrapper = render()
     await flushPromises()
     await wrapper.get('[data-testid="create-account-group"]').trigger('click')
-    await wrapper.get('#account-group-parent').setValue('5')
+    await selectGroupOption(wrapper, 'account-group-parent', 5)
     await flushPromises()
     expect(mocks.accounts).toHaveBeenNthCalledWith(2, 2, 100, { group: '5', lite: '1' })
     expect(wrapper.findAll('[data-testid^="member-"]')).toHaveLength(5)
@@ -352,7 +359,7 @@ describe('AccountGroupsView', () => {
     await flushPromises()
     await wrapper.get('[data-testid="create-account-group"]').trigger('click')
     await wrapper.get('#account-group-name').setValue('New group')
-    await wrapper.get('#account-group-parent').setValue('5')
+    await selectGroupOption(wrapper, 'account-group-parent', 5)
     await flushPromises()
     await wrapper.get('[data-testid="member-2"]').setValue(true)
     await wrapper.get('[data-testid="member-4"]').setValue(true)
@@ -378,7 +385,7 @@ describe('AccountGroupsView', () => {
     expect(wrapper.find('[data-testid="confirmation-dialog"]').exists()).toBe(false)
     expect(wrapper.get('#account-group-name').element.value).toBe('New group')
     expect(wrapper.get('[data-testid="member-4"]').element.checked).toBe(true)
-    await wrapper.get('#account-group-source').setValue('4')
+    await selectGroupOption(wrapper, 'account-group-source', 4)
     await wrapper.get('#account-group-form').trigger('submit')
     await flushPromises()
     expect(mocks.create).toHaveBeenLastCalledWith({ name: 'New group', group_id: 5, account_ids: [2, 4], source_account_id: 4 })

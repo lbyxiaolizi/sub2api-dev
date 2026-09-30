@@ -45,10 +45,12 @@
           </div>
           <div>
             <label for="account-group-parent" class="input-label">{{ t('admin.accountGroups.parentGroup') }}</label>
-            <select id="account-group-parent" v-model.number="form.group_id" class="input" :disabled="!!editingGroup || saving" required @change="changeParentGroup">
-              <option :value="0" disabled>{{ t('admin.accountGroups.selectParentGroup') }}</option>
-              <option v-for="group in parentGroups" :key="group.id" :value="group.id">{{ group.name }}</option>
-            </select>
+            <Select id="account-group-parent" v-model="form.group_id"
+              :options="[
+                { value: 0, label: t('admin.accountGroups.selectParentGroup'), disabled: true },
+                ...parentGroups.map(group => ({ value: group.id, label: group.name }))
+              ]"
+              :disabled="!!editingGroup || saving" @update:model-value="changeParentGroup" />
           </div>
         </div>
 
@@ -68,9 +70,9 @@
           </div>
           <div v-if="!editingGroup && form.account_ids.length">
             <label for="account-group-source" class="input-label">{{ t('admin.accountGroups.sourceAccount') }}</label>
-            <select id="account-group-source" v-model.number="form.source_account_id" class="input" required :disabled="saving">
-              <option v-for="account in selectedCandidates" :key="account.id" :value="account.id">{{ account.name }} (#{{ account.id }})</option>
-            </select>
+            <Select id="account-group-source" v-model="form.source_account_id"
+              :options="selectedCandidates.map(account => ({ value: account.id, label: `${account.name} (#${account.id})` }))"
+              :disabled="saving" />
             <p class="mt-1 text-xs text-gray-500">{{ t('admin.accountGroups.sourceHint') }}</p>
           </div>
         </fieldset>
@@ -143,6 +145,7 @@
 
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref, watch } from 'vue'
+import Select from '@/components/common/Select.vue'
 import { useRoute } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { adminAPI } from '@/api/admin'

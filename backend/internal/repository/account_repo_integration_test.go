@@ -1612,8 +1612,12 @@ func (s *AccountRepoSuite) TestUpdateExtra_SchedulerNeutralSkipsOutboxAndSyncsFr
 	s.Require().Equal(88.5, got.Extra["codex_5h_used_percent"])
 	s.Require().Equal(0.42, got.Extra["session_window_utilization"])
 
+	// Other account events may exist in the shared integration database. Scope
+	// the assertion to this mutation rather than relying on global test order.
+	other := mustCreateAccount(s.T(), s.client, &service.Account{Name: "acc-extra-neutral-unrelated"})
+	s.Require().NoError(enqueueSchedulerOutbox(s.ctx, s.repo.sql, service.SchedulerOutboxEventAccountChanged, &other.ID, nil, nil))
 	var outboxCount int
-	s.Require().NoError(scanSingleRow(s.ctx, s.repo.sql, "SELECT COUNT(*) FROM scheduler_outbox", nil, &outboxCount))
+	s.Require().NoError(scanSingleRow(s.ctx, s.repo.sql, "SELECT COUNT(*) FROM scheduler_outbox WHERE account_id = $1", []any{account.ID}, &outboxCount))
 	s.Require().Zero(outboxCount)
 	s.Require().Len(cacheRecorder.setAccounts, 1)
 	s.Require().NotNil(cacheRecorder.accounts[account.ID])
