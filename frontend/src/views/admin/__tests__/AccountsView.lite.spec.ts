@@ -15,7 +15,8 @@ const {
   getAllGroups,
   refreshCredentials,
   showError,
-  showWarning
+  showWarning,
+  routerPush
 } = vi.hoisted(() => ({
   listAccounts: vi.fn(),
   listWithEtag: vi.fn(),
@@ -26,7 +27,13 @@ const {
   getAllGroups: vi.fn(),
   refreshCredentials: vi.fn(),
   showError: vi.fn(),
-  showWarning: vi.fn()
+  showWarning: vi.fn(),
+  routerPush: vi.fn()
+}))
+
+vi.mock('vue-router', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('vue-router')>()),
+  useRouter: () => ({ push: routerPush })
 }))
 
 vi.mock('@/api/admin', () => ({
@@ -67,6 +74,7 @@ const DataTableStub = defineComponent({
     <div>
       <div v-for="row in data" :key="row.id" :data-account-name="row.name">
         <slot name="cell-groups" :row="row" />
+        <div data-test="schedulable"><slot name="cell-schedulable" :row="row" /></div>
         <slot name="cell-actions" :row="row" />
       </div>
     </div>
@@ -169,6 +177,7 @@ describe('admin AccountsView lite account list', () => {
     refreshCredentials.mockReset()
     showError.mockReset()
     showWarning.mockReset()
+    routerPush.mockReset().mockResolvedValue(undefined)
   })
 
   afterEach(() => {
@@ -258,6 +267,57 @@ describe('admin AccountsView lite account list', () => {
     await flushPromises()
     expect(getById).toHaveBeenCalledTimes(3)
     expect(wrapper.get('[data-test="stats-account"]').text()).toBe('compact row')
+    wrapper.unmount()
+  })
+
+  it('routes group-managed account editing to the centralized configuration page', async () => {
+    listAccounts.mockResolvedValue({ items: [{ ...listRow, account_config_group_id: 12 }], total: 1, page: 1, page_size: 20, pages: 1 })
+    const wrapper = mountView()
+    await flushPromises()
+
+    const editButton = wrapper.findAll('button').find(button => button.text().includes('common.edit'))
+    await editButton!.trigger('click')
+    await flushPromises()
+
+    expect(routerPush).toHaveBeenCalledWith({ path: '/admin/account-groups', query: { edit: 12 } })
+    expect(getById).not.toHaveBeenCalled()
+    expect(wrapper.get('[data-test="edit-account"]').text()).toBe('')
+    wrapper.unmount()
+  })
+
+  it('disables the direct scheduling toggle for group-managed accounts', async () => {
+    listAccounts.mockResolvedValue({ items: [{ ...listRow, account_config_group_id: 12 }], total: 1, page: 1, page_size: 20, pages: 1 })
+    const wrapper = mountView()
+    await flushPromises()
+
+    const toggle = wrapper.get('[data-test="schedulable"] button')
+    expect(toggle.attributes('disabled')).toBeDefined()
+    expect(toggle.attributes('title')).toBe('admin.accountGroups.managedByGroup')
+    wrapper.unmount()
+  })
+
+  it('keeps the direct scheduling toggle enabled for independent accounts', async () => {
+    const wrapper = mountView()
+    await flushPromises()
+
+    const toggle = wrapper.get('[data-test="schedulable"] button')
+    expect(toggle.attributes('disabled')).toBeUndefined()
+    expect(toggle.attributes('title')).toBe('admin.accounts.schedulableEnabled')
+    wrapper.unmount()
+  })
+
+  it('uses refreshed membership when the account joined a group after the list loaded', async () => {
+    getById.mockResolvedValue({ ...fullAccount, account_config_group_id: 13 })
+    const wrapper = mountView()
+    await flushPromises()
+
+    const editButton = wrapper.findAll('button').find(button => button.text().includes('common.edit'))
+    await editButton!.trigger('click')
+    await flushPromises()
+
+    expect(getById).toHaveBeenCalledWith(42)
+    expect(routerPush).toHaveBeenCalledWith({ path: '/admin/account-groups', query: { edit: 13 } })
+    expect(wrapper.get('[data-test="edit-account"]').text()).toBe('')
     wrapper.unmount()
   })
 

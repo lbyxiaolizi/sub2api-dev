@@ -7,6 +7,7 @@ import dashboardAPI from './dashboard'
 import usersAPI from './users'
 import groupsAPI from './groups'
 import accountsAPI from './accounts'
+import accountGroupsAPI from './accountGroups'
 import proxiesAPI from './proxies'
 import redeemAPI from './redeem'
 import promoAPI from './promo'
@@ -47,6 +48,7 @@ export const adminAPI = {
   users: usersAPI,
   groups: groupsAPI,
   accounts: accountsAPI,
+  accountGroups: accountGroupsAPI,
   proxies: proxiesAPI,
   proxyPools: proxyPoolsAPI,
   redeem: redeemAPI,
@@ -85,6 +87,7 @@ export {
   usersAPI,
   groupsAPI,
   accountsAPI,
+  accountGroupsAPI,
   proxiesAPI,
   redeemAPI,
   promoAPI,
@@ -133,3 +136,5 @@ export type {
   PluginUISession,
   PluginTestResult
 } from './plugins'
+
+export type { AccountConfigGroup, AccountGroupConfig, CreateAccountGroupRequest, UpdateAccountGroupRequest } from './accountGroups'

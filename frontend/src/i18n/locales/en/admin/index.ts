@@ -1,6 +1,7 @@
 import overview from './overview'
 import channels from './channels'
 import accounts from './accounts'
+import accountGroups from './accountGroups'
 import resources from './resources'
 import ops from './ops'
 import settings from './settings'
@@ -13,6 +14,7 @@ export default {
   ...overview,
   ...channels,
   ...accounts,
+  ...accountGroups,
   ...resources,
   ...ops,
   ...settings,

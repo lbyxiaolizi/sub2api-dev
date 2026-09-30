@@ -461,9 +461,44 @@ func (r *groupRepository) Update(ctx context.Context, groupIn *service.Group) er
 }
 
 func (r *groupRepository) Delete(ctx context.Context, id int64) error {
-	_, err := r.client.Group.Delete().Where(group.IDEQ(id)).Exec(ctx)
+	tx, err := r.client.Tx(ctx)
+	if err != nil && !errors.Is(err, dbent.ErrTxStarted) {
+		return err
+	}
+	client := r.client
+	if tx != nil {
+		defer func() { _ = tx.Rollback() }()
+		client = tx.Client()
+	}
+	// Locking the parent first also prevents a new account configuration group
+	// from attaching while this soft deletion is in progress.
+	rows, err := client.QueryContext(ctx, "SELECT id FROM groups WHERE id = $1 FOR UPDATE", id)
+	if err != nil {
+		return err
+	}
+	for rows.Next() {
+		var lockedID int64
+		if err := rows.Scan(&lockedID); err != nil {
+			_ = rows.Close()
+			return err
+		}
+	}
+	err = rows.Err()
+	_ = rows.Close()
+	if err != nil {
+		return err
+	}
+	if _, err := client.ExecContext(ctx, "DELETE FROM account_config_groups WHERE group_id = $1", id); err != nil {
+		return err
+	}
+	_, err = client.Group.Delete().Where(group.IDEQ(id)).Exec(ctx)
 	if err != nil {
 		return translatePersistenceError(err, service.ErrGroupNotFound, nil)
+	}
+	if tx != nil {
+		if err := tx.Commit(); err != nil {
+			return err
+		}
 	}
 	if err := enqueueSchedulerOutbox(ctx, r.sql, service.SchedulerOutboxEventGroupChanged, nil, &id, nil); err != nil {
 		logger.LegacyPrintf("repository.group", "[SchedulerOutbox] enqueue group delete failed: group=%d err=%v", id, err)
@@ -960,7 +995,12 @@ func (r *groupRepository) deleteCascade(ctx context.Context, id int64, requireEm
 		return nil, err
 	}
 
-	// 3. Delete account_groups join rows.
+	// 3. Release configuration-group membership before deleting the protected
+	// routing bindings. Account configuration itself is intentionally retained.
+	if _, err := exec.ExecContext(ctx, "DELETE FROM account_config_groups WHERE group_id = $1", id); err != nil {
+		return nil, err
+	}
+	// Delete account_groups join rows.
 	if _, err := exec.ExecContext(ctx, "DELETE FROM account_groups WHERE group_id = $1", id); err != nil {
 		return nil, err
 	}

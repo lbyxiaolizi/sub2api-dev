@@ -1337,6 +1337,8 @@ kiro_credit_unit_price_usd?: number
   created_at: string
   updated_at: string
   proxy?: Proxy
+  account_config_group_id?: number | null
+  account_config_group_name?: string | null
   group_ids?: number[] // Groups this account belongs to
   groups?: Group[] // Preloaded group objects
 

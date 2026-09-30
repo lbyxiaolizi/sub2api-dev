@@ -50,6 +50,7 @@ func TestUpdateExtraEnsuresCodexFingerprintSeedAtomicallyWhenEnabling(t *testing
 	t.Cleanup(func() { _ = client.Close() })
 
 	mock.ExpectBegin()
+	expectUngroupedAccountConfigWrite(mock)
 	mock.ExpectExec(`(?s)UPDATE accounts SET extra = .*jsonb_set.*gen_random_uuid\(\)::text.*WHERE id = \$2 AND deleted_at IS NULL`).
 		WithArgs(`{"codex_fingerprint_mode":"device"}`, int64(27)).
 		WillReturnResult(sqlmock.NewResult(0, 1))
@@ -76,6 +77,7 @@ func TestBulkUpdateCodexFingerprintSeedRollsBackWhenUpdateFails(t *testing.T) {
 	t.Cleanup(func() { _ = client.Close() })
 
 	mock.ExpectBegin()
+	expectUngroupedAccountConfigWrite(mock)
 	mock.ExpectExec(`(?s)UPDATE accounts SET extra = .*gen_random_uuid\(\)::text.*WHERE id = ANY\(\$2\)`).
 		WithArgs(sqlmock.AnyArg(), `{27,28}`).
 		WillReturnError(errors.New("update failed"))
@@ -102,6 +104,7 @@ func TestBulkUpdateCodexFingerprintSeedRollsBackWhenOutboxFails(t *testing.T) {
 	t.Cleanup(func() { _ = client.Close() })
 
 	mock.ExpectBegin()
+	expectUngroupedAccountConfigWrite(mock)
 	mock.ExpectExec(`(?s)UPDATE accounts SET extra = .*gen_random_uuid\(\)::text.*WHERE id = ANY\(\$2\)`).
 		WithArgs(sqlmock.AnyArg(), `{27,28}`).
 		WillReturnResult(sqlmock.NewResult(0, 2))

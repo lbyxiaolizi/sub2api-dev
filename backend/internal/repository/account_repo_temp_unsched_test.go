@@ -396,6 +396,19 @@ func (e *recordingSQLExecutor) ExecContext(ctx context.Context, query string, ar
 }
 
 func (e *recordingSQLExecutor) QueryContext(ctx context.Context, query string, args ...any) (*sql.Rows, error) {
+
+	// SQL-builder tests have no fixture memberships. Return an empty result for
+	// the transactional ownership guard without recording it as a write.
+	if strings.Contains(query, "account_config_group_write_guard") || strings.Contains(query, "SELECT account_id FROM account_config_group_members WHERE account_id") {
+		db, mock, err := sqlmock.New()
+		if err != nil {
+			return nil, err
+		}
+		mock.ExpectQuery(regexp.QuoteMeta(query)).WillReturnRows(sqlmock.NewRows([]string{"id"}))
+		rows, err := db.QueryContext(ctx, query, args...)
+		_ = db.Close()
+		return rows, err
+	}
 	return nil, sql.ErrNoRows
 }
 

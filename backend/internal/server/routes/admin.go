@@ -374,6 +374,13 @@ func registerGroupRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 }
 
 func registerAccountRoutes(admin *gin.RouterGroup, h *handler.Handlers, stepUpAuth middleware.StepUpAuthMiddleware) {
+	configGroups := admin.Group("/account-groups")
+	configGroups.GET("", h.Admin.Account.ListAccountConfigGroups)
+	configGroups.POST("", h.Admin.Account.CreateAccountConfigGroup)
+	configGroups.POST("/:id/accounts", h.Admin.Account.CreateAccountInConfigGroup)
+	configGroups.GET("/:id", h.Admin.Account.GetAccountConfigGroup)
+	configGroups.PUT("/:id", h.Admin.Account.UpdateAccountConfigGroup)
+	configGroups.DELETE("/:id", h.Admin.Account.DeleteAccountConfigGroup)
 	accounts := admin.Group("/accounts")
 	{
 		accounts.GET("", h.Admin.Account.List)
